@@ -1,0 +1,11 @@
+[package]
+name = "paneb"
+version = "0.1.0"
+authors = ["Mathieu Boisnard <m.boisnard@free.fr>", "Valentin Fries <contact@fries.io>", "Vincent Milano <vincent_mot@hotmail.fr>"]
+
+[lib]
+name = "paneb"
+crate-type = ["cdylib"]
+
+[dependencies]
+nalgebra = "0.14.0"
