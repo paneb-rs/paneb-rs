@@ -1,16 +1,16 @@
 extern crate nalgebra;
 
 #[no_mangle]
-pub extern fn add(i: u8, j: u8) -> u8 {
-	i + j
+pub extern fn super_add(value: f64) -> f64 {
+	value + 42.
 }
 
 #[cfg(test)]
 mod test {
-	use add;
+	use super_add;
 	
 	#[test]
 	fn test() {
-		assert_eq!(2, add(1, 1));
+		assert_eq!(49., super_add(7.));
 	}
 }
