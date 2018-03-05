@@ -1,6 +1,7 @@
 extern crate nalgebra;
 
-fn add(i: u8, j: u8) -> u8 {
+#[no_mangle]
+pub extern fn add(i: u8, j: u8) -> u8 {
 	i + j
 }
 
