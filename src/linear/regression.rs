@@ -31,13 +31,21 @@ pub unsafe extern fn regression_compute(
 	Box::into_raw(Box::new(result.data)) as *mut c_void
 }
 
+#[no_mangle]
+pub unsafe extern fn regression_point(weights_raw: *mut c_void, inputs_size: i32, inputs_raw: *mut c_void) -> f64 {
+	let weights = &*(weights_raw as *mut Box<[f64]>);
+	let inputs = from_raw_parts(inputs_raw as *mut f64, inputs_size as usize);
+	
+	weights[0] + inputs[0] * weights[1] + inputs[1] * weights[2]
+}
+
 #[cfg(test)]
 mod test {
 	use std::os::raw::c_void;
 	use super::*;
 	
 	#[test]
-	fn should_train_network() {
+	fn should_regress() {
 		let mut raw_inputs = vec![
 			1., 1., 1.,
 			1., 1., -2.,
