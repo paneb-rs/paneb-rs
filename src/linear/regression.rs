@@ -4,29 +4,60 @@ use std::slice::from_raw_parts;
 use nalgebra::{DMatrix};
 
 #[no_mangle]
-pub unsafe extern fn regression_create(rows: i32, columns: i32, raw_inputs: *mut c_void) -> *mut c_void {
-	let inputs = from_raw_parts(raw_inputs as *mut f64, (rows * columns) as usize);
+pub unsafe extern fn regression_compute(
+	input_rows: i32, input_cols: i32, input_raw: *mut c_void,
+	output_rows: i32, output_cols: i32, output_raw: *mut c_void
+) -> *mut c_void {
+	let inputs = from_raw_parts(input_raw as *mut f64, (input_rows * input_cols) as usize);
+	let input_matrix = DMatrix::from_column_slice(input_rows as usize, input_cols as usize, inputs);
+	//println!("Input matrix: {:?}", input_matrix);
 	
-	Box::into_raw(Box::new(
-		DMatrix::from_column_slice(rows as usize, columns as usize, inputs)
-	)) as *mut c_void
-}
-
-#[no_mangle]
-pub unsafe extern fn regression_train(raw_matrix: *mut c_void, rows: i32, columns: i32, raw_outputs: *mut c_void) -> *mut c_void {
-	let input_matrix = &*(raw_matrix as *mut DMatrix<f64>);
-	
-	let outputs = from_raw_parts(raw_outputs as *mut f64, (rows * columns) as usize);
-	let output_matrix = DMatrix::from_column_slice(rows as usize, columns as usize, outputs);
+	let outputs = from_raw_parts(output_raw as *mut f64, (output_rows * output_cols) as usize);
+	let output_matrix = DMatrix::from_column_slice(output_rows as usize, output_cols as usize, outputs);
+	//println!("Output matrix: {:?}", output_matrix);
 	
 	let transposed_inputs = input_matrix.transpose();
-	let multiplied_inputs = input_matrix * transposed_inputs.clone();
+	//println!("Transposed matrix: {:?}", transposed_inputs);
+	let multiplied_inputs = transposed_inputs.clone() * input_matrix;
+	//println!("Multiplied matrix: {:?}", multiplied_inputs);
 	
 	let inversed_inputs = multiplied_inputs.try_inverse().unwrap();
-	let final_inputs = transposed_inputs * inversed_inputs;
+	//println!("Inversed matrix: {:?}", inversed_inputs);
+	let final_inputs = inversed_inputs * transposed_inputs;
+	//println!("Final matrix: {:?}", final_inputs);
+	let result = final_inputs * output_matrix;
+	//println!("Result matrix: {:?}", result);
 	
-	let result = output_matrix * final_inputs;
+	Box::into_raw(Box::new(result.data)) as *mut c_void
+}
+
+#[cfg(test)]
+mod test {
+	use std::os::raw::c_void;
+	use super::*;
 	
-	//Box::into_raw(Box::new(result)) as *mut c_void
-	raw_matrix
+	#[test]
+	fn should_train_network() {
+		let mut raw_inputs = vec![
+			1., 1., 1.,
+			1., 1., -2.,
+			1., -2., -1.
+		];
+		let inputs = raw_inputs.as_mut_ptr() as *mut c_void;
+		
+		let mut raw_outputs = vec![
+			1.,
+			1.,
+			-1.
+		];
+		let outputs = raw_outputs.as_mut_ptr() as *mut c_void;
+		
+		unsafe {
+			let model = regression_compute(
+				3, 3, inputs,
+				3, 1, outputs
+			);
+			let _ = &*(model as *mut Box<[f64]>);
+		}
+	}
 }
