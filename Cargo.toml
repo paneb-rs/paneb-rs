@@ -8,4 +8,5 @@ name = "paneb"
 crate-type = ["cdylib"]
 
 [dependencies]
+rand = "0.4.2"
 nalgebra = "0.14.0"
