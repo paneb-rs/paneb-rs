@@ -1,6 +1,7 @@
 use rand;
 use rand::Rng;
 use std::os::raw::c_void;
+use std::slice::from_raw_parts;
 
 #[no_mangle]
 pub unsafe extern fn classification_create(size: i32) -> *mut c_void {
@@ -17,32 +18,36 @@ pub unsafe extern fn classification_weights(weights: *mut c_void, index: i32) ->
 }
 
 #[no_mangle]
-pub unsafe extern fn classification_train(weights: *mut c_void, x: f64, y: f64, expected: i32) {
+pub unsafe extern fn classification_train(weights: *mut c_void, size: i32, inputs: *mut c_void, expected: i32) {
 	let weights = &mut *(weights as *mut Vec<f64>);
-	let actual = classification_sign(weights, x, y);
+	let inputs = from_raw_parts(inputs as *mut f64, size as usize);
 	
-	if expected != actual {
-		classification_update_weights(weights, x, y, expected, actual);
+	let sign = classification_sign(weights, inputs);
+	
+	if expected != sign {
+		classification_update_weights(weights, inputs, expected, sign);
 	}
 }
 
 #[no_mangle]
-pub unsafe extern fn classification_compute(weights: *mut c_void, x: f64, y: f64) -> i32 {
+pub unsafe extern fn classification_compute(weights: *mut c_void, size: i32, inputs: *mut c_void) -> i32 {
 	let weights = &mut *(weights as *mut Vec<f64>);
-	classification_sign(weights, x, y)
+	let inputs = from_raw_parts(inputs as *mut f64, size as usize);
+	
+	classification_sign(weights, inputs)
 }
 
-fn classification_update_weights(weights: &mut Vec<f64>, x: f64, y: f64, expected: i32, actual: i32) {
+fn classification_update_weights(weights: &mut Vec<f64>, inputs: &[f64], expected: i32, sign: i32) {
 	let alpha = 0.1;
-	let diff = (expected - actual) as f64;
+	let diff = (expected - sign) as f64;
 	
 	weights[0] = weights[0] + alpha * diff * 1.;
-	weights[1] = weights[1] + alpha * diff * x;
-	weights[2] = weights[2] + alpha * diff * y;
+	weights[1] = weights[1] + alpha * diff * inputs[0];
+	weights[2] = weights[2] + alpha * diff * inputs[1];
 }
 
-fn classification_sign(weights: &Vec<f64>, x: f64, y: f64) -> i32 {
-	match (weights[0] + x * weights[1] + y * weights[2]) > 0. {
+fn classification_sign(weights: &Vec<f64>, inputs: &[f64]) -> i32 {
+	match (weights[0] + inputs[0] * weights[1] + inputs[1] * weights[2]) > 0. {
 		true => 1,
 		false => -1
 	}
