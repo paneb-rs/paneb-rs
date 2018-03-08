@@ -22,6 +22,10 @@ pub unsafe extern fn classification_train(weights: *mut c_void, size: i32, input
 	let weights = &mut *(weights as *mut Vec<f64>);
 	let inputs = from_raw_parts(inputs as *mut f64, size as usize);
 	
+	if inputs.len() + 1 != weights.len() {
+		panic!("Input size does not match model");
+	}
+	
 	let sign = classification_sign(weights, inputs);
 	
 	if expected != sign {
@@ -34,6 +38,10 @@ pub unsafe extern fn classification_compute(weights: *mut c_void, size: i32, inp
 	let weights = &mut *(weights as *mut Vec<f64>);
 	let inputs = from_raw_parts(inputs as *mut f64, size as usize);
 	
+	if inputs.len() + 1 != weights.len() {
+		panic!("Input size does not match model");
+	}
+	
 	classification_sign(weights, inputs)
 }
 
@@ -42,8 +50,10 @@ fn classification_update_weights(weights: &mut Vec<f64>, inputs: &[f64], expecte
 	let diff = (expected - sign) as f64;
 	
 	weights[0] = weights[0] + alpha * diff * 1.;
-	weights[1] = weights[1] + alpha * diff * inputs[0];
-	weights[2] = weights[2] + alpha * diff * inputs[1];
+	
+	for index in 0..inputs.len() {
+		weights[index + 1] = weights[index + 1] + alpha * diff * inputs[index]
+	}
 }
 
 fn classification_sign(weights: &Vec<f64>, inputs: &[f64]) -> i32 {
