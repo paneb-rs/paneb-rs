@@ -21,7 +21,7 @@ pub unsafe extern fn regression_compute(
 	let multiplied_inputs = transposed_inputs.clone() * input_matrix;
 	//println!("Multiplied matrix: {:?}", multiplied_inputs);
 	
-	let inversed_inputs = multiplied_inputs.try_inverse().unwrap();
+	let inversed_inputs = multiplied_inputs.pseudo_inverse(10E-49);
 	//println!("Inversed matrix: {:?}", inversed_inputs);
 	let final_inputs = inversed_inputs * transposed_inputs;
 	//println!("Final matrix: {:?}", final_inputs);
