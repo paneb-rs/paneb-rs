@@ -57,7 +57,13 @@ fn classification_update_weights(weights: &mut Vec<f64>, inputs: &[f64], expecte
 }
 
 fn classification_sign(weights: &Vec<f64>, inputs: &[f64]) -> i32 {
-	match (weights[0] + inputs[0] * weights[1] + inputs[1] * weights[2]) > 0. {
+	let mut acc = weights[0];
+	
+	for index in 0..inputs.len() {
+		acc += inputs[index] * weights[index + 1];
+	}
+	
+	match acc > 0. {
 		true => 1,
 		false => -1
 	}
