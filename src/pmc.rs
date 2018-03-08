@@ -32,8 +32,11 @@ pub unsafe extern fn pmc_train(
 ) {
 	let weights = &mut *(model as *mut Vec<DMatrix<f64>>);
 	let layers = from_raw_parts(layers as *mut i32, nb_layers as usize);
-	let prefixed_inputs = prefix_inputs(from_raw_parts(inputs as *mut f64, inputs_size as usize));
-	let _outputs = from_raw_parts(outputs as *mut f64, outputs_size as usize);
+	let inputs = from_raw_parts(inputs as *mut f64, inputs_size as usize);
+	let outputs = from_raw_parts(outputs as *mut f64, outputs_size as usize);
+	
+	let prefixed_inputs = prefix_array(inputs);
+	let prefixed_outputs = prefix_array(outputs);
 	
 	let _neurons_output = compute_neurons_output(weights, nb_layers, layers, prefixed_inputs);
 	
@@ -44,7 +47,7 @@ pub unsafe extern fn pmc_train(
 		// Re-compute weights (forward)
 }
 
-fn prefix_inputs(inputs: &[f64]) -> Vec<f64> {
+fn prefix_array(inputs: &[f64]) -> Vec<f64> {
 	let mut vector = Vec::new();
 	vector.push(1.);
 	
@@ -74,7 +77,7 @@ unsafe fn compute_neurons_output(weights: &Vec<DMatrix<f64>>, nb_layers: i32, la
 			println!("Previous layer n°{}: {} neurons", l - 1, nb_neurons_previous_layer);
 			
 			for i in 0..nb_neurons_previous_layer {
-				println!("Previous neuron index {}", i);
+				println!("Previous neuron index: {}", i);
 				let weight = weights[l].get_unchecked(i, j);
 				println!("Weight: {}", weight);
 				let neuron_output = output[l - 1][i];
@@ -91,6 +94,26 @@ unsafe fn compute_neurons_output(weights: &Vec<DMatrix<f64>>, nb_layers: i32, la
 	
 	println!("Neurons output: {:?}", output);
 	output
+}
+
+unsafe fn compute_neurons_delta(neurons_output: Vec<Vec<f64>>, nb_layers: i32, layers: &[i32], expected_outputs: Vec<f64>) -> Vec<Vec<f64>> {
+	let mut deltas: Vec<Vec<f64>> = neurons_output.clone();
+	
+	// Last layer deltas
+	let nb_neurons = layers[nb_layers - 1 as usize] + 1;
+	for j in 0..nb_neurons {
+		let value = neurons_outputs[nb_layers - 1][j];
+		let expected_value = expected_outputs[j];
+		
+		deltas[nb_layers - 1][j] = (1 - value.powf(2.)) * (value - expected_value);
+	}
+	
+	// Propagation
+	for l in 1..nb_layers {
+		let layer_index = nb_layers - 1 - l;
+		// TODO
+	}
+	
 }
 
 #[cfg(test)]
@@ -119,10 +142,8 @@ mod test {
 				}
 				else {
 					for value in matrix.data.iter() {
-						//print!("{} ", value);
 						assert!(&-0.9 <= value && value <= &1.1)
 					}
-					//println!("");
 				}
 			}
 		}
@@ -145,12 +166,7 @@ mod test {
 			let outputs = outputs.as_mut_ptr() as *mut c_void;
 			
 			let model = pmc_create(nb_layers, layers);
-			let untrained_weights = &*(model as *mut Vec<DMatrix<f64>>).clone();
-			
 			pmc_train(model, nb_layers, layers, nb_inputs, inputs, nb_outputs, outputs);
-			let trained_weights = &*(model as *mut Vec<DMatrix<f64>>).clone();
-			
-			assert_eq!(trained_weights, untrained_weights);
 		}
 	}
 }
