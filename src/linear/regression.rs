@@ -1,7 +1,7 @@
 use std::os::raw::c_void;
 use std::slice::from_raw_parts;
 
-use nalgebra::{DMatrix};
+use nalgebra::DMatrix;
 
 #[no_mangle]
 pub unsafe extern fn regression_compute(
