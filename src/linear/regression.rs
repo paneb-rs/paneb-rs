@@ -10,23 +10,15 @@ pub unsafe extern fn regression_compute(
 ) -> *mut c_void {
 	let inputs = from_raw_parts(input_raw as *mut f64, (input_rows * input_cols) as usize);
 	let input_matrix = DMatrix::from_row_slice(input_rows as usize, input_cols as usize, inputs);
-	//println!("Input matrix: {:?}", input_matrix);
 	
 	let outputs = from_raw_parts(output_raw as *mut f64, (output_rows * output_cols) as usize);
 	let output_matrix = DMatrix::from_row_slice(output_rows as usize, output_cols as usize, outputs);
-	//println!("Output matrix: {:?}", output_matrix);
 	
 	let transposed_inputs = input_matrix.transpose();
-	//println!("Transposed matrix: {:?}", transposed_inputs);
 	let multiplied_inputs = transposed_inputs.clone() * input_matrix;
-	//println!("Multiplied matrix: {:?}", multiplied_inputs);
-	
 	let inversed_inputs = multiplied_inputs.pseudo_inverse(10E-49);
-	//println!("Inversed matrix: {:?}", inversed_inputs);
 	let final_inputs = inversed_inputs * transposed_inputs;
-	//println!("Final matrix: {:?}", final_inputs);
 	let result = final_inputs * output_matrix;
-	//println!("Result matrix: {:?}", result);
 	
 	Box::into_raw(Box::new(result.data)) as *mut c_void
 }
@@ -34,7 +26,6 @@ pub unsafe extern fn regression_compute(
 #[no_mangle]
 pub unsafe extern fn regression_point(weights_raw: *mut c_void, inputs_size: i32, inputs_raw: *mut c_void) -> f64 {
 	let weights = &*(weights_raw as *mut Box<[f64]>);
-	//println!("Result: {:?}", weights);
 	let inputs = from_raw_parts(inputs_raw as *mut f64, inputs_size as usize);
 	
 	weights[0] + inputs[0] * weights[1] + inputs[1] * weights[2]
