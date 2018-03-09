@@ -28,7 +28,13 @@ pub unsafe extern fn regression_point(weights_raw: *mut c_void, inputs_size: i32
 	let weights = &*(weights_raw as *mut Box<[f64]>);
 	let inputs = from_raw_parts(inputs_raw as *mut f64, inputs_size as usize);
 	
-	weights[0] + inputs[0] * weights[1] + inputs[1] * weights[2]
+	let mut acc = weights[0];
+	
+	for index in 0..inputs.len() {
+		acc += inputs[index] * weights[index + 1];
+	}
+	
+	acc
 }
 
 #[cfg(test)]
@@ -41,7 +47,7 @@ mod test {
 		let mut raw_inputs = vec![
 			1., 1., 8.,
 			1., 1., -2.,
-			4., 1., -2.,
+			1., 1., -2.,
 			1., -2., -1.
 		];
 		let inputs = raw_inputs.as_mut_ptr() as *mut c_void;
@@ -59,8 +65,7 @@ mod test {
 				4, 3, inputs,
 				4, 1, outputs
 			);
-			let _ = &*(model as *mut Box<[f64]>);
-			regression_point(model, 4, outputs);
+			regression_point(model, 2, outputs);
 		}
 	}
 }
