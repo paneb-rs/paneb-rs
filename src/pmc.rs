@@ -160,6 +160,12 @@ pub unsafe extern fn pmc_compute(
 	Box::into_raw(Box::new(output)) as *mut c_void
 }
 
+#[no_mangle]
+pub unsafe extern fn pmc_value(values: *mut c_void, index: i32) -> f64 {
+	let values = &*(values as *mut Vec<f64>);
+	values[index as usize]
+}
+
 #[cfg(test)]
 mod test {
 	use std::os::raw::c_void;
@@ -212,7 +218,10 @@ mod test {
 			let model = pmc_create(nb_layers, layers);
 			pmc_train(nb_layers, layers, model, nb_inputs, inputs, nb_outputs, outputs);
 			
-			let _output = pmc_compute(nb_layers, layers, model, nb_inputs, inputs);
+			let output = pmc_compute(nb_layers, layers, model, nb_inputs, inputs);
+			let value = pmc_value(output, 0);
+			
+			assert!(-1. <= value && value <= 1.);
 		}
 	}
 }
