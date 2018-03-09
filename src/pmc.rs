@@ -26,7 +26,7 @@ pub unsafe extern fn pmc_create(nb_layers: i32, layers: *mut c_void) -> *mut c_v
 
 #[no_mangle]
 pub unsafe extern fn pmc_train(
-	model: *mut c_void, nb_layers: i32, layers: *mut c_void,
+	nb_layers: i32, layers: *mut c_void, model: *mut c_void,
 	inputs_size: i32, inputs: *mut c_void,
 	outputs_size: i32, outputs: *mut c_void
 ) {
@@ -38,13 +38,9 @@ pub unsafe extern fn pmc_train(
 	let prefixed_inputs = prefix_array(inputs);
 	let prefixed_outputs = prefix_array(outputs);
 	
-	let _neurons_output = compute_neurons_output(weights, nb_layers, layers, prefixed_inputs);
-	
-	// Update output neurones
-	// Retropropagation
-		// Compute delta last layer
-		// Compute delta other layers (backwards)
-		// Re-compute weights (forward)
+	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs);
+	let neurons_delta = compute_neurons_delta(nb_layers, layers, weights, &neurons_output, &prefixed_outputs);
+	update_weights(nb_layers, layers, weights, &neurons_output, &neurons_delta);
 }
 
 fn prefix_array(inputs: &[f64]) -> Vec<f64> {
@@ -55,33 +51,25 @@ fn prefix_array(inputs: &[f64]) -> Vec<f64> {
 		vector.push(value.clone());
 	}
 	
-	println!("Input values: {:?}, Input vector: {:?}", inputs, vector);
 	vector
 }
 
-unsafe fn compute_neurons_output(weights: &Vec<DMatrix<f64>>, nb_layers: i32, layers: &[i32], prefixed_inputs: Vec<f64>) -> Vec<Vec<f64>> {
+unsafe fn compute_neurons_output(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, prefixed_inputs: &Vec<f64>) -> Vec<Vec<f64>> {
 	let mut output: Vec<Vec<f64>> = Vec::new();
-	output.push(prefixed_inputs);
+	output.push(prefixed_inputs.clone());
 	
 	for l in 1..nb_layers as usize {
 		let nb_neurons = layers[l] as usize + 1;
 		let mut layer_output: Vec<f64> = Vec::with_capacity(nb_neurons);
 		layer_output.push(1.);
 		
-		println!("Layer n°{}: {} neurons", l, nb_neurons);
-		
 		for j in 1..nb_neurons as usize {
 			let nb_neurons_previous_layer = layers[l - 1] as usize + 1;
 			let mut result: f64 = 0.;
 			
-			println!("Previous layer n°{}: {} neurons", l - 1, nb_neurons_previous_layer);
-			
 			for i in 0..nb_neurons_previous_layer {
-				println!("Previous neuron index: {}", i);
 				let weight = weights[l].get_unchecked(i, j);
-				println!("Weight: {}", weight);
 				let neuron_output = output[l - 1][i];
-				println!("Neuron output: {}", neuron_output);
 				
 				result += weight * neuron_output;
 			}
@@ -92,28 +80,84 @@ unsafe fn compute_neurons_output(weights: &Vec<DMatrix<f64>>, nb_layers: i32, la
 		output.push(layer_output);
 	}
 	
-	println!("Neurons output: {:?}", output);
+	//println!("Neurons output: {:?}", output);
 	output
 }
 
-unsafe fn compute_neurons_delta(neurons_output: Vec<Vec<f64>>, nb_layers: i32, layers: &[i32], expected_outputs: Vec<f64>) -> Vec<Vec<f64>> {
+unsafe fn compute_neurons_delta(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, neurons_output: &Vec<Vec<f64>>, expected_output: &Vec<f64>) -> Vec<Vec<f64>> {
+	let nb_layers = nb_layers as usize;
 	let mut deltas: Vec<Vec<f64>> = neurons_output.clone();
 	
 	// Last layer deltas
-	let nb_neurons = layers[nb_layers - 1 as usize] + 1;
-	for j in 0..nb_neurons {
-		let value = neurons_outputs[nb_layers - 1][j];
-		let expected_value = expected_outputs[j];
+	let nb_neurons = layers[nb_layers - 1] + 1;
+	for j in 0..nb_neurons as usize {
+		let value = neurons_output[nb_layers - 1][j];
+		let expected_value = expected_output[j];
 		
-		deltas[nb_layers - 1][j] = (1 - value.powf(2.)) * (value - expected_value);
+		deltas[nb_layers - 1][j] = (1. - value.powf(2.)) * (value - expected_value);
 	}
 	
 	// Propagation
 	for l in 1..nb_layers {
 		let layer_index = nb_layers - 1 - l;
-		// TODO
+		let next_layer_index = layer_index + 1;
+		let nb_neurons_next_layer = layers[next_layer_index];
+		
+		for i in 0..layers[layer_index] as usize + 1 {
+			let lhs = 1. - neurons_output[layer_index][i].powf(2.);
+			let mut rhs = 0.;
+			
+			for j in 1..nb_neurons_next_layer as usize + 1 {
+				rhs += weights[next_layer_index].get_unchecked(i, j) * deltas[next_layer_index][j];
+			}
+			
+			deltas[layer_index][i] = lhs * rhs;
+		}
 	}
 	
+	//println!("Deltas: {:?}", deltas);
+	deltas
+}
+
+unsafe fn update_weights(nb_layers: i32, layers: &[i32], weights: &mut Vec<DMatrix<f64>>, neurons_output: &Vec<Vec<f64>>, neurons_delta: &Vec<Vec<f64>>) {
+	let nb_layers = nb_layers as usize;
+	let alpha = 0.1;
+	
+	//println!("Weights: {:?}", weights);
+	
+	for l in 1..nb_layers {
+		let nb_neurons = layers[l] + 1;
+		
+		for j in 0..nb_neurons as usize {
+			let nb_neurons_previous_layer = layers[l - 1] + 1;
+			
+			for i in 0..nb_neurons_previous_layer as usize {
+				let updated_weight = weights[l].get_unchecked(i, j) - (alpha * neurons_output[l - 1][i] * neurons_delta[l][j]);
+				*weights[l].get_unchecked_mut(i, j) = updated_weight;
+			}
+		}
+	}
+	
+	//println!("Updated weights: {:?}", weights);
+}
+
+#[no_mangle]
+pub unsafe extern fn pmc_compute(
+	nb_layers: i32, layers: *mut c_void, model: *mut c_void,
+	inputs_size: i32, inputs: *mut c_void
+) -> *mut c_void {
+	let weights = &mut *(model as *mut Vec<DMatrix<f64>>);
+	let layers = from_raw_parts(layers as *mut i32, nb_layers as usize);
+	
+	let inputs = from_raw_parts(inputs as *mut f64, inputs_size as usize);
+	let prefixed_inputs = prefix_array(inputs);
+	
+	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs);
+	let mut output = neurons_output[neurons_output.len() - 1].clone();
+	output.remove(0);
+	
+	println!("Computed output: {:?}", output);
+	Box::into_raw(Box::new(output)) as *mut c_void
 }
 
 #[cfg(test)]
@@ -150,7 +194,7 @@ mod test {
 	}
 	
 	#[test]
-	fn should_train_pmc() {
+	fn should_train_and_compute_pmc() {
 		let nb_layers = 3;
 		let mut layers = [2, 3, 1];
 		
@@ -166,7 +210,9 @@ mod test {
 			let outputs = outputs.as_mut_ptr() as *mut c_void;
 			
 			let model = pmc_create(nb_layers, layers);
-			pmc_train(model, nb_layers, layers, nb_inputs, inputs, nb_outputs, outputs);
+			pmc_train(nb_layers, layers, model, nb_inputs, inputs, nb_outputs, outputs);
+			
+			let _output = pmc_compute(nb_layers, layers, model, nb_inputs, inputs);
 		}
 	}
 }
