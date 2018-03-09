@@ -28,7 +28,8 @@ pub unsafe extern fn pmc_create(nb_layers: i32, layers: *mut c_void) -> *mut c_v
 pub unsafe extern fn pmc_train(
 	nb_layers: i32, layers: *mut c_void, model: *mut c_void,
 	inputs_size: i32, inputs: *mut c_void,
-	outputs_size: i32, outputs: *mut c_void
+	outputs_size: i32, outputs: *mut c_void,
+	is_regression: i32
 ) {
 	let weights = &mut *(model as *mut Vec<DMatrix<f64>>);
 	let layers = from_raw_parts(layers as *mut i32, nb_layers as usize);
@@ -38,8 +39,8 @@ pub unsafe extern fn pmc_train(
 	let prefixed_inputs = prefix_array(inputs);
 	let prefixed_outputs = prefix_array(outputs);
 	
-	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs);
-	let neurons_delta = compute_neurons_delta(nb_layers, layers, weights, &neurons_output, &prefixed_outputs);
+	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs, is_regression);
+	let neurons_delta = compute_neurons_delta(nb_layers, layers, weights, &neurons_output, &prefixed_outputs, is_regression);
 	update_weights(nb_layers, layers, weights, &neurons_output, &neurons_delta);
 }
 
@@ -54,16 +55,18 @@ fn prefix_array(inputs: &[f64]) -> Vec<f64> {
 	vector
 }
 
-unsafe fn compute_neurons_output(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, prefixed_inputs: &Vec<f64>) -> Vec<Vec<f64>> {
+unsafe fn compute_neurons_output(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, prefixed_inputs: &Vec<f64>, is_regression: i32) -> Vec<Vec<f64>> {
+	let nb_layers = nb_layers as usize;
+	
 	let mut output: Vec<Vec<f64>> = Vec::new();
 	output.push(prefixed_inputs.clone());
 	
-	for l in 1..nb_layers as usize {
+	for l in 1..nb_layers {
 		let nb_neurons = layers[l] as usize + 1;
 		let mut layer_output: Vec<f64> = Vec::with_capacity(nb_neurons);
 		layer_output.push(1.);
 		
-		for j in 1..nb_neurons as usize {
+		for j in 1..nb_neurons {
 			let nb_neurons_previous_layer = layers[l - 1] as usize + 1;
 			let mut result: f64 = 0.;
 			
@@ -74,7 +77,10 @@ unsafe fn compute_neurons_output(nb_layers: i32, layers: &[i32], weights: &Vec<D
 				result += weight * neuron_output;
 			}
 			
-			layer_output.push(result.tanh());
+			match is_regression == 1 && l == nb_layers - 1 {
+				true => layer_output.push(result),
+				false => layer_output.push(result.tanh())
+			};
 		}
 		
 		output.push(layer_output);
@@ -84,7 +90,7 @@ unsafe fn compute_neurons_output(nb_layers: i32, layers: &[i32], weights: &Vec<D
 	output
 }
 
-unsafe fn compute_neurons_delta(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, neurons_output: &Vec<Vec<f64>>, expected_output: &Vec<f64>) -> Vec<Vec<f64>> {
+unsafe fn compute_neurons_delta(nb_layers: i32, layers: &[i32], weights: &Vec<DMatrix<f64>>, neurons_output: &Vec<Vec<f64>>, expected_output: &Vec<f64>, is_regression: i32) -> Vec<Vec<f64>> {
 	let nb_layers = nb_layers as usize;
 	let mut deltas: Vec<Vec<f64>> = neurons_output.clone();
 	
@@ -94,7 +100,9 @@ unsafe fn compute_neurons_delta(nb_layers: i32, layers: &[i32], weights: &Vec<DM
 		let value = neurons_output[nb_layers - 1][j];
 		let expected_value = expected_output[j];
 		
-		deltas[nb_layers - 1][j] = (1. - value.powf(2.)) * (value - expected_value);
+		deltas[nb_layers - 1][j] =
+			if is_regression == 1 { (value - expected_value) }
+			else { (1. - value.powf(2.)) * (value - expected_value) }
 	}
 	
 	// Propagation
@@ -144,7 +152,8 @@ unsafe fn update_weights(nb_layers: i32, layers: &[i32], weights: &mut Vec<DMatr
 #[no_mangle]
 pub unsafe extern fn pmc_compute(
 	nb_layers: i32, layers: *mut c_void, model: *mut c_void,
-	inputs_size: i32, inputs: *mut c_void
+	inputs_size: i32, inputs: *mut c_void,
+	is_regression: i32
 ) -> *mut c_void {
 	let weights = &mut *(model as *mut Vec<DMatrix<f64>>);
 	let layers = from_raw_parts(layers as *mut i32, nb_layers as usize);
@@ -152,11 +161,11 @@ pub unsafe extern fn pmc_compute(
 	let inputs = from_raw_parts(inputs as *mut f64, inputs_size as usize);
 	let prefixed_inputs = prefix_array(inputs);
 	
-	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs);
+	let neurons_output = compute_neurons_output(nb_layers, layers, weights, &prefixed_inputs, is_regression);
 	let mut output = neurons_output[neurons_output.len() - 1].clone();
 	output.remove(0);
 	
-	println!("Computed output: {:?}", output);
+	//println!("Computed output: {:?}", output);
 	Box::into_raw(Box::new(output)) as *mut c_void
 }
 
@@ -216,9 +225,9 @@ mod test {
 			let outputs = outputs.as_mut_ptr() as *mut c_void;
 			
 			let model = pmc_create(nb_layers, layers);
-			pmc_train(nb_layers, layers, model, nb_inputs, inputs, nb_outputs, outputs);
+			pmc_train(nb_layers, layers, model, nb_inputs, inputs, nb_outputs, outputs, -1);
 			
-			let output = pmc_compute(nb_layers, layers, model, nb_inputs, inputs);
+			let output = pmc_compute(nb_layers, layers, model, nb_inputs, inputs, -1);
 			let value = pmc_value(output, 0);
 			
 			assert!(-1. <= value && value <= 1.);
